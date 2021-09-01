@@ -1,0 +1,207 @@
+---
+title: "Data Preparation Survey Experiment with the German sample"
+author: "Sebastian Sternberg"
+date: "07 07 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+rm(list = ls())
+
+require(magrittr)
+require(haven)
+require(foreign)
+require(dplyr)
+
+
+
+```
+
+## Prepare november wave gip 
+
+This is the coding of the experimental groups from the codebook:
+
+[wenn expAK26001_1 = 1: ]
+[wenn expAK26001_1 = 2: Dem Bundesverfassungsgericht liegt das Gesetz vor. Die Richterinnen und Richter befürworten das Gesetz.]
+[wenn expAK26001_1 = 3: Dem Bundesverfassungsgericht liegt das Gesetz vor. Die Richterinnen und Richter lehnen das Gesetz ab.]
+[wenn expAK26001_1 = 4: Der Kultusministerkonferenz liegt das Gesetz vor. Sie befürwortet das Gesetz.]
+[wenn expAK26001_1 = 5: Der Kultusministerkonferenz liegt das Gesetz vor. Sie lehnt das Gesetz ab.]
+
+```{r}
+#read in data from GIP November wave
+
+gip_nov <- read_dta("../Data/GIP_W26_V2.dta")
+
+#subset only the necessary variables for experiment
+
+gip_nov <- gip_nov %>%
+  dplyr::select(id_g, 
+                expAK26001_1, #experimental groups of the survey experiment
+                AK26001, #outcome experiment: decision of the respondent
+                AK26023, #knowledge judge presidents: Which of the following persons is the current GFCC president?
+                AK26024 ) #knowledge judges: which of the following persons is judge at the GFCC?
+
+#Recode the I don't knows or "keine Angabe" to NA
+gip_nov$AK26001[gip_nov$AK26001 < 0] <- NA
+table(gip_nov$AK26001, useNA = "ifany") #check
+
+#convert experimental group assignment to factor for later usage:
+
+gip_nov$expAK26001_1 <- as.factor(gip_nov$expAK26001_1)
+
+
+#recode the experiment groups into more meaningful factors:
+
+gip_nov <- gip_nov %>%
+  mutate(experiment_groups_nov = recode(expAK26001_1, 
+                                    "1" = "Control",                          
+                                    "2" = "GFCC_Approves",
+                                    "3" = "GFCC_Disapproves",
+                                    "4" = "Kultusminister_Approves",
+                                    "5" = "Kultusminister_Disapproves"
+                                    )
+         )
+
+#convert outcome variable as factor: 
+gip_nov$AK26001 %<>% as.factor() 
+
+gip_nov <- gip_nov %>%
+  mutate(sup_factor_nov = recode(AK26001, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+table(gip_nov$sup_factor_nov, gip_nov$AK26001, useNA = "ifany")
+
+```
+
+## Prepare januar wave gip
+
+```{r}
+
+
+gip_jan <- read_dta("GIP_W27_V1.dta")
+
+
+#subset only the necessary variables for experiment
+
+
+gip_jan <- gip_jan %>%
+  dplyr::select(id_g, expAK27030, #experimental groups
+                AK27030, #response experioment
+                AK27031, #trust_bverfg
+                AK27034, #trust_government
+                AK27035 ) #trust_judiciary
+
+
+
+table(gip_jan$expAK27030, useNA = "ifany") #why are there NAs in the experimental setup?
+table(gip_jan$AK27030, useNA = "ifany") #-99 and -90 are do not know.
+
+table(gip_jan$AK27031, useNA = "ifany") #-99 and -90 are do not know.
+
+
+#Recode the I don't knows to 
+gip_jan$AK27030[gip_jan$AK27030 < 0] <- NA
+
+table(gip_jan$AK27030, useNA = "ifany") #check
+
+#recode NAs in trust gfcc:
+gip_jan$AK27031[gip_jan$AK27031 < 0] <- NA
+
+table(gip_jan$AK27031, useNA = "ifany") #check
+
+#trust government:
+
+gip_jan$AK27034[gip_jan$AK27034 < 0] <- NA
+
+table(gip_jan$AK27034, useNA = "ifany") #check
+
+
+
+#recode experimental groups:
+
+gip_jan$expAK27030 <- as.factor(gip_jan$expAK27030)
+
+gip_jan <- gip_jan %>%
+  mutate(experiment_groups_jan = recode(expAK27030, 
+                                    "1" = "Control",                                       
+                                    "2" = "GFCC_Approves",
+                                    "3" = "GFCC_Disapproves",
+                                    "4" = "DPA_Approves",
+                                    "5" = "DPA_Disapproves"
+  )
+  )
+
+
+#recode outcome variable
+
+gip_jan$AK27030 %<>% as.factor() 
+
+gip_jan <- gip_jan %>%
+  mutate(sup_factor_jan = recode(AK27030, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+table(gip_jan$sup_factor_jan, gip_jan$AK27030, useNA = "ifany")
+
+```
+
+
+## Merge both to one larger data set
+
+```{r}
+
+gip_merge <-  left_join(gip_jan, gip_nov)
+
+```
+
+Merge interesting covariates from gip core study to it:
+
+```{r}
+
+gip_core <- read_dta("gip_core16.dta")
+
+
+length(unique(gip_nov$id_g))
+length(unique(gip_core$id_g))
+
+gip_core <- gip_core %>% dplyr::select(id_g, 
+                                       AA25043, #party identification
+                                       AA25039, #Sonntagsfrage
+                                       AA25040a, #left right selfeplacement, 1 left, 11 right
+                                       gender_16, 
+                                       occupation_16, #employment status
+                                       educ_school_16 #highest education degree
+                                       )
+
+gip_merge <- left_join(gip_merge, gip_core, by = c("id_g" = "id_g"))
+
+
+```
+
+save the final gip merge data set.
+
+```{r}
+
+save(gip_merge, file = "gip_merge.Rda")
+
+```
+
+
+
+
