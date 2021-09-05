@@ -1,7 +1,7 @@
 # Legitimacy_Replication_Code
 Replication Code for Legitimacy Paper
 
-This repository contains the necessary code for the  paper XY
+This repository contains the necessary code for the  paper The Legitimacy-Conferring Capacity of Constitutional Courts: Evidence From a Comparative Survey Experiment forthcoming in the EJPR.
 
 
 # German Internet Panel Acccess:
@@ -22,11 +22,7 @@ Proceed as follows:
 8.	Name the datasets as specified in the replication code and place them in a folder called "Data".
 9.	Merge the data according to the replication code.
 
-
-Disclaimer:
-
-The Zelig version used in the main code is out-dated. In order to use it, we provide script "installed_archived_zeligverse.R" to install the Zelig Version used in the analysis scripts. We also provide the zeligverse.tar required in the repo. 
-
+# How to replicate
 
 To replicate the German findings, run the code in the following order:
 
@@ -39,6 +35,15 @@ To replicate the French findings, run the code in the following order:
 
 - 01_ENEF_analysis.Rmd
 - 02_ENEF_Robustness.Rmd
+
+This code was tested on:
+
+- version.string R version 4.1.0 (2021-05-18)
+- nickname       Camp Pontanezen 
+
+Disclaimer:
+
+The Zelig version used in the main code is out-dated. In order to use it, we provide the script "installed_archived_zeligverse.R" to install the Zelig Version used in the analysis scripts. We also provide the zeligverse.tar required in the repo. 
 
 
 ToDo:
