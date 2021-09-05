@@ -15,16 +15,6 @@ install.packages(pkgs=pkgFile, type="source", repos=NULL)
 
 require(devtools)
 
-
-install.packages("tmvnsim")
-
-mnormt
-gmm
-ucminf
-tmvtnorm
-ei
-
-
 install_version("ZeligChoice", version = "0.9.6", repos = "http://cran.us.r-project.org")
 install_version("WhatIf", version = "1.5.9", repos = "http://cran.r-project.org")
 install_version("ZeligEI", version = "0.1.2", repos = "http://cran.us.r-project.org")
