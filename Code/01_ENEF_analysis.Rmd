@@ -1,0 +1,633 @@
+---
+title: "Analysis France"
+author: "Sebastian Sternberg"
+date: "10 January 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+```{r}
+
+rm(list = ls())
+
+require(magrittr)
+require(haven)
+require(foreign)
+require(dplyr)
+
+library(tidyverse)
+
+
+```
+
+Read in the data from France:
+
+
+
+
+Attention: Scale is reversed in France:
+
+1	Tout à fait d’accord
+2	Plutôt d’accord
+3	Ni d’accord, ni pas d’accord
+4	Plutôt pas d’accord
+5	Pas d’accord du tout
+97  Je ne sais pas
+98  Je ne veux pas répondre
+
+# Descriptives Trust (Figure 1)
+
+```{r}
+
+load("../Data/gip_merge.Rda")
+
+#trust in gfc
+prop.table(table(gip_merge$AK27031, useNA = "ifany")) #trust_bverfg
+
+
+#create data set for the plot
+trust_gfcc <- as.data.frame.table(prop.table(table(gip_merge$AK27031)), 
+                                  row.names = c("no trust at all", "no trust", "rather not trust", "indifferent",
+                                                "rather trust",
+                                                "high trust", "very high trust"),
+                                  responseName = "Percentage")
+trust_gfcc$Var1 <- rownames(trust_gfcc)
+
+
+#create data set for France:
+library(haven)
+
+enef <- read_dta("../Data/ENEF2017_legitimacy_experiment.dta")
+
+enef$QCONF4_2[enef$QCONF4_2 > 11] <- NA
+
+#has 10 point scale
+table(enef$QCONF4_2, useNA = "ifany")
+
+#recode: collapse the highest and lowest category
+
+enef$QCONF4_2_fac <- as.factor(enef$QCONF4_2)
+
+enef <- enef %>%
+  mutate(trust_cc = recode(QCONF4_2_fac, 
+                           "0" = "no trust at all",                                       
+                           "1" = "no trust at all",
+                           "2" = "no trust at all",
+                           "3" = "no trust",
+                           "4" = "rather not trust",
+                           "5" = "indifferent",
+                           "6" = "rather trust",
+                           "7" = "high trust",
+                           "8" = "very high trust",
+                           "9" = "very high trust",
+                           "10" = "very high trust"
+  )
+  )
+
+#check coding:
+
+table(enef$trust_cc, enef$QCONF4_2_fac)
+
+#create data set for the plot
+trust_cc <- as.data.frame.table(prop.table(table(enef$trust_cc)),
+                                responseName = "Percentage")
+
+require(ggplot2)
+require(ggthemes)
+require(plyr)
+
+plot_data_trust <- rbind.data.frame(trust_gfcc, trust_cc)
+plot_data_trust$country <- c(rep("Germany", 7), rep("France", 7))
+
+
+#change percentage to 100 for plotting
+plot_data_trust$Percentage <- plot_data_trust$Percentage*100
+
+#correct the order of the factor such that it is correctly plotted
+plot_data_trust$Var2 <-  factor(plot_data_trust$Var1 , levels = c(unique(plot_data_trust$Var1)))
+
+
+plot_data_trust$country <- as.factor(plot_data_trust$country)
+
+
+p <- ggplot(plot_data_trust, aes(x = fct_rev(country), y = Percentage, fill = fct_rev(Var2))) +
+  geom_bar(stat='identity',  width = .7, colour="black", lwd=0.1) + 
+  scale_fill_manual(values=c("gray45", "gray55", "gray65", "gray75", "gray90", "gray95", "gray100")) +
+  #scale_fill_grey(start=0.1, end=0.9) + 
+  geom_text(#label= paste(round(plot_data_trust$Percentage, 0), "%", sep = ""), 
+    label = round(plot_data_trust$Percentage, 0),
+    position=position_stack(vjust=0.5), 
+    color="black", size=5) +
+  labs(y="Level of Trust (in %)", x="") + 
+  guides(fill=guide_legend(""))+
+  coord_flip()+
+  theme_tufte()+
+  theme(text = element_text(size=20))+
+  theme(
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank())
+
+
+#save
+outfolder <- ("../Figures")
+
+pdf(paste(outfolder,"/comparison_trust.pdf",sep = ""), width = 12, height = 8)
+p
+dev.off()
+
+```
+
+
+
+```{r}
+
+
+df <- read_dta("../Data/ENEF2017_legitimacy_experiment.dta")
+
+
+table(df$QEXPPOSINS, useNA = "ifany") #experimental groups pension
+
+table(df$PEXPPOSINS, useNA = "ifany") #experimental groups school 
+
+
+#Recode experimental groups:
+
+class(df$ID12)
+class(df$QEXPPOSINS)
+
+
+df$PEXPPOSINS <- as.factor(df$PEXPPOSINS)
+
+#recode the education variable
+
+df <- df %>%
+  mutate(experiment_groups_school = recode(PEXPPOSINS, 
+                                    "1" = "Control",                                       
+                                    "2" = "CC_Approves",
+                                    "3" = "CC_Disapproves",
+                                    "4" = "Haut_Conseil_Edu_Approves",
+                                    "5" = "Haut_Conseil_Edu_Disapproves"
+  )
+  )
+
+
+df$QEXPPOSINS <- as.factor(df$QEXPPOSINS)
+
+#recode the pension variable
+df <- df %>%
+  mutate(experiment_groups_pension = recode(QEXPPOSINS, 
+                                    "1" = "Control",                                       
+                                    "2" = "CC_Approves",
+                                    "3" = "CC_Disapproves",
+                                    "4" = "Conseil_d_Orientation_appr.",
+                                    "5" = "Conseil_d_Orientation_disappr."
+  )
+  )
+
+
+#recode NAs
+df$PCCFAITH[df$PCCFAITH > 6] <- NA
+df$QCCFAITH[df$QCCFAITH > 6] <- NA
+
+table(df$PCCFAITH, useNA = "ifany")
+table(df$QCCFAITH, useNA = "ifany")
+
+
+#short check:
+
+#first reverse to have the German coding:
+
+df$PCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_school  = recode(PCCFAITH, 
+                             "1" = "5",                                  
+                             "2" = "4",
+                             "3" = "3",
+                             "4" = "2",
+                             "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_school <- factor(df$rating_school, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_school, df$PCCFAITH)
+
+
+###do the same for the pension variable
+
+df$QCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_pension  = recode(QCCFAITH, 
+                             "1" = "5",                                  
+                             "2" = "4",
+                             "3" = "3",
+                             "4" = "2",
+                             "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_pension <- factor(df$rating_pension, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_pension, df$QCCFAITH)
+
+
+#################
+#continue recoding: now to 3-point scale
+
+df <- df %>%
+  mutate(rating_school_factor = recode(rating_school, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_school, df$rating_school_factor, useNA = "ifany")
+
+
+#same for pension policy experiment
+
+df <- df %>%
+  mutate(rating_pension_factor = recode(rating_pension, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_pension, df$rating_pension_factor, useNA = "ifany")
+
+```
+
+
+# Ordinal Probit School Security Law (Figure 2b France Results)
+
+```{r}
+
+library(MASS)
+
+m_enef_school <- polr(rating_school_factor ~ experiment_groups_school, 
+                   data = df, 
+               method = "probit",
+                   Hess=TRUE)
+
+summary(m_enef_school)
+
+#pvalues
+
+(ctable <- coef(summary(m_enef_school)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+#######################
+###plot coefs:
+
+# Extract coefficient estimates
+
+coef_vec <- summary(m_enef_school)$coefficients[1:4,1] 
+coef_vec <- c(coef_vec, "NA","NA") %>% as.numeric()
+
+
+names_vec_nov <- c("CC \n Approves", 
+                   "CC \n Disapproves", 
+                   "Haut Conseil \n de l'Éducation \n Approves", 
+                   "Haut Conseil \n de l'Éducation \n Disapproves", " ", " ") # Extract variable names
+
+se_vec <- summary(m_enef_school )$coefficients[1:4,2]
+se_vec <- c(se_vec, "NA", "NA") %>% as.numeric()
+
+
+outfolder <- ("../Figures")
+
+pdf(paste(outfolder,"/coefplot_enef_school.pdf",sep = ""), width = 8, height = 8)
+
+#adjust margins:
+par(mar  = c(4,7,2,2))
+
+plot(coef_vec, 6:1, 
+     pch=19, 
+     cex=.8, 
+     axes=F, 
+     ylab="", 
+     xlab="Ordered Probit Coefficients", 
+     xlim=c(-0.4, 0.4))
+axis(1)
+axis(2, at=6:1, label=names_vec_nov, col="white", las = 1)
+abline(v=0, lty=2) # add zero reference line
+
+#plot 95% CIs
+segments(coef_vec - qnorm(0.975)*se_vec,  6:1, coef_vec + qnorm(0.975)*se_vec, length(coef_vec):1) # add confidence intervals
+
+#add 90% CIs
+segments(coef_vec - qnorm(0.95)*se_vec,  6:1, coef_vec + qnorm(0.95)*se_vec, length(coef_vec):1, lwd = 2) # add confidence intervals
+
+dev.off()
+
+
+
+```
+
+There is no effect of legitimization in the France case. However, the Haut Conseil has a legitimizing effect in case of an approval.
+
+Make the corresponding regression table for the Appendix:
+
+```{r}
+library(stargazer)
+
+stargazer(m_enef_school, 
+          style = "ajps",
+          type = "latex",
+          coef = list(summary(m_enef_school)$coefficients[,1]),
+          title            = "Results of Ordinal Probit Regression",
+          covariate.labels = c(names_vec_nov[1:4], 
+                               names(m_enef_school$zeta))
+          ,
+          column.labels = "test",
+          #dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement)"
+)
+
+
+
+```
+
+## Effect over Party: Figure 5a and 5b
+
+The Variable OQ10 (wave 15) covers all the information about the party identification of respondents. 
+
+
+     1                                                   Lutte Ouvrirre
+     2                                       Nouveau Parti Anticapitaliste
+     3                                        Parti Communiste Francais
+     4                                  France Insoumise / Parti de Gauche
+     5                                                      Nouvelle Donne
+     6                                                    Parti Socialiste
+     7                                             Parti radical de gauche
+     8                                         Europe Ecologie - Les Verts
+     9 Autres Ecologie : Union des d<e9>mocrates et <e9>cologistes, CAP 21
+    10                                                            Le MoDem
+    11                                                               L'UDI
+    12                                                 Les R<e9>publicains
+    13                                                    Debout la France
+    14                                                      Front National
+    15                                                         Autre parti
+    16                                                         En marche 
+First, make the same jitter plot as for the German case to see what is the overall preference towards such a school security law. 
+
+```{r}
+
+table(df$OQ10)
+
+df$OQ10 <- as.factor(df$OQ10)
+
+df <- df %>%
+  mutate(party_id = recode(OQ10, 
+                                    "1" = "Other", #Lutte Ouvrière                                      
+                                    "2" = "Other", #Nouveau Parti Anticapitaliste
+                                    "3" = "Other", #Parti Communiste Francais
+                                    "4" = "Parti de Gauche",
+                                    "5" = "Other", #Nouvelle Donne
+                                    "6" = "Parti Socialiste",
+                                    "7" = "Other",#Parti radical de gauche
+                                    "8" = "Les Verts",
+                                    "9" = "Other", #Autres Ecologie
+                                    "10" = "Le MoDem",
+                                    "11" = "L'UDI",
+                                    "12" = "Les Républicains",
+                                    "13" = "Other", #Debout la France
+                                    "14" = "Rassemblement National",
+                                    "15" = "Other",
+                                    "16" = "En marche!"
+  )
+  )
+
+prop.table(table(df$party_id, useNA = "ifany"))
+
+df$party_id <-  droplevels(df$party_id)
+
+partyid_int <- as.integer(df$party_id)
+
+
+
+#recode for plotting:
+
+df <- df %>%
+  mutate(sup_3 = recode(rating_school_factor, 
+                             "disagree" = "1",                                  
+                             "indifferent" = "2",
+                             "agree" = "3"
+  )
+  ) 
+
+df$sup_3 <- as.numeric(as.character(df$sup_3 ))
+
+pdf(paste(outfolder,"/jitter_party_fr.pdf",sep = ""), width = 8, height = 8)
+
+par(mar  = c(5,11,2,2))
+
+
+plot(jitter(df$sup_3[df$experiment_groups_school == "Control"]), 
+     jitter(partyid_int[df$experiment_groups_school == "Control"]), pch=19, cex=.6,
+     xlab="Support for School Security Law", ylab="", axes=F)
+axis(1, at = c(1:3), col="white", col.axis="black", labels = c("disagree", "indifferent", "agree"))
+
+axis(2, at=c(1:9), 
+     labels= levels(df$party_id), 
+     col="white",
+     col.axis="black", cex.lab = 0.9, las = 1)
+
+dev.off()
+
+
+
+```
+
+Look at Front National Voters:
+
+
+
+```{r}
+
+#dummy for front national:
+
+df$front_voter <- ifelse(df$party_id == "Rassemblement National", 1, 0)
+
+table(df$front_voter, useNA = "ifany")
+
+#####################
+###Simulate
+z.front <- zelig(rating_school_factor ~ experiment_groups_school*front_voter,
+               model = "ologit", data = df)
+
+summary(z.front)
+
+#gfcc disapproves
+
+s_gfcc_agree_no_front <- setx(z.front, experiment_groups_school = "Control", front_voter = 0)
+s_gfcc_agree_front <- setx(z.front, experiment_groups_school = "Control", front_voter = 1)
+
+#simulate fd
+fd_front <- sim(z.front, s_gfcc_agree_no_front,s_gfcc_agree_front)
+summary(fd_front)
+
+plot(fd_front)
+
+```
+
+```{r}
+
+s_gfcc_agree_no_front <- setx(z.front, experiment_groups_school = "Control", front_voter = 1)
+s_gfcc_agree_front <- setx(z.front, experiment_groups_school = "CC_Disapproves", front_voter = 1)
+
+#simulate fd
+fd_front <- sim(z.front, s_gfcc_agree_no_front,s_gfcc_agree_front)
+summary(fd_front)
+
+plot(fd_front)
+
+
+```
+
+Now the same for socialiste:
+
+
+```{r}
+
+df$socialist_voter <- ifelse(df$party_id == "Parti Socialiste", 1, 0)
+
+table(df$socialist_voter, useNA = "ifany")
+
+#####################
+###Simulate
+z.socialist <- zelig(rating_school_factor ~ experiment_groups_school*socialist_voter,
+                  model = "ologit", data = df)
+
+summary(z.socialist)
+
+#gfcc disapproves
+
+s_gfcc_agree_no_socialist <- setx(z.socialist, experiment_groups_school = "Control", socialist_voter = 0)
+s_gfcc_agree_socialist <- setx(z.socialist, experiment_groups_school = "Control", socialist_voter = 1)
+
+#simulate fd
+fd_socialist <- sim(z.socialist, s_gfcc_agree_no_socialist,s_gfcc_agree_socialist)
+summary(fd_socialist)
+
+plot(fd_socialist)
+
+```
+
+
+```{r}
+
+s_gfcc_agree_no_socialist <- setx(z.socialist, experiment_groups_school = "Control", socialist_voter = 1)
+s_gfcc_agree_socialist <- setx(z.socialist, experiment_groups_school = "CC_Approves", socialist_voter = 1)
+
+#simulate fd
+fd_socialist <- sim(z.socialist, s_gfcc_agree_no_socialist,s_gfcc_agree_socialist)
+summary(fd_socialist)
+
+plot(fd_socialist)
+
+```
+
+No statistically signifcant effect. 
+
+
+Plot the FDs for the socialists
+
+```{r}
+pdf(paste(outfolder,"/fd_socialist.pdf",sep = ""), width = 12, height = 8)
+
+
+outcome_vector <- c("Probability of \n disagreeing", "Probability of \n being indifferent", 
+                    "Probability of \n agreeing")
+
+
+par(mfrow=c(1,1), mar=c(5, 6, 2, 1))
+
+
+plot(colMeans(fd_socialist$sim.out$x1$fd[[1]]), 3:1, 
+     pch=c(19),
+     ann=F,  
+     xlim=c(-0.4, 0.4), 
+     #xlabel = "Test",
+     # ylim=c(-3.1, 2),
+     axes=F,
+     cex = 0.8)
+     #col="maroon3")
+#rect(-2, -2, 2, 2, border=F, col="grey92")
+axis(1)
+axis(2, at=3:1, label= outcome_vector, col="white", las = 1)
+
+title("", xlab = "FD Socialiste-Voter \n Control Group/CC Approves", ylab = "")
+#axis(4, las = 1) 
+abline(v=0, lty=2)
+
+fd_ci95 <- apply(fd_socialist$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.025, 0.975))
+segments(fd_ci95[1, ], 3:1,
+         fd_ci95[2, ], 3:1) # Add 95% Confidence Intervals
+
+fd_ci_90 <- apply(fd_socialist$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.05, 0.95))
+segments(fd_ci_90[1, ], 3:1,
+         fd_ci_90[2, ], 3:1,
+         lwd = 2) # Add 90% Confidence Intervals
+
+dev.off()
+
+```
+
+```{r}
+
+pdf(paste(outfolder,"/fd_front_national.pdf",sep = ""), width = 12, height = 8)
+par(mfrow=c(1,1), mar=c(5, 6, 2, 1))
+#Plot Front National
+
+plot(colMeans(fd_front$sim.out$x1$fd[[1]]), 3:1, 
+     pch=c(19),
+     ann=F,  
+     xlim=c(-0.4, 0.4), 
+     axes=F, 
+     cex = 0.8)
+
+axis(1)
+axis(2, at=3:1, label= outcome_vector, col="white", las = 1)
+
+title("", xlab = "FD FN-Voter \n Control Group/CC Disapproves", ylab = "")
+#axis(4, las = 1) 
+abline(v=0, lty=2)
+
+fd_ci_95 <- apply(fd_front$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.025, 0.975))
+segments(fd_ci_95[1, ], 3:1,
+         fd_ci_95[2, ], 3:1) # Add 95% Confidence Intervals
+
+fd_ci_90 <- apply(fd_front$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.05, 0.95))
+segments(fd_ci_90[1, ], 3:1,
+         fd_ci_90[2, ], 3:1,
+         lwd = 2) # Add 95% Confidence Intervals
+
+dev.off()
+
+```

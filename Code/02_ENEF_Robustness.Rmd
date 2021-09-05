@@ -1,0 +1,316 @@
+---
+title: "Robustness France"
+author: "Sebastian Sternberg"
+date: "9/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Robustness France
+
+
+## Knowledge of Court:
+
+The variable PCONINS_3 covers the question whether respondents know the court or not. 
+
+Wording: Voici une liste d&#39;institutions de la République. Pour chacune d&#39;entre-elles, dites si: 
+1 Vous la connaissez de nom et vous êtes informé sur ses fonctions
+2 Vous la connaissez de nom mais vous n&#39;êtes pas informé sur ses fonctions
+3 Vous ne la connaissez pas
+
+
+```{r}
+
+rm(list = ls())
+
+require(magrittr)
+require(haven)
+require(foreign)
+require(dplyr)
+
+library(tidyverse)
+
+
+```
+
+
+# Data Prep
+
+
+```{r}
+
+
+
+df <- read_dta("../Data/ENEF2017_legitimacy_experiment.dta")
+
+
+table(df$QEXPPOSINS, useNA = "ifany") #experimental groups pension
+
+table(df$PEXPPOSINS, useNA = "ifany") #experimental groups school 
+
+
+#Recode experimental groups:
+
+class(df$ID12)
+class(df$QEXPPOSINS)
+
+
+df$PEXPPOSINS <- as.factor(df$PEXPPOSINS)
+
+#recode the education variable
+
+df <- df %>%
+  mutate(experiment_groups_school = recode(PEXPPOSINS, 
+                                    "1" = "Control",                                       
+                                    "2" = "CC_Approves",
+                                    "3" = "CC_Disapproves",
+                                    "4" = "Haut_Conseil_Edu_Approves",
+                                    "5" = "Haut_Conseil_Edu_Disapproves"
+  )
+  )
+
+
+df$QEXPPOSINS <- as.factor(df$QEXPPOSINS)
+
+#recode the pension variable
+df <- df %>%
+  mutate(experiment_groups_pension = recode(QEXPPOSINS, 
+                                    "1" = "Control",                                       
+                                    "2" = "CC_Approves",
+                                    "3" = "CC_Disapproves",
+                                    "4" = "Conseil_d_Orientation_appr.",
+                                    "5" = "Conseil_d_Orientation_disappr."
+  )
+  )
+
+
+#recode NAs
+df$PCCFAITH[df$PCCFAITH > 6] <- NA
+df$QCCFAITH[df$QCCFAITH > 6] <- NA
+
+table(df$PCCFAITH, useNA = "ifany")
+table(df$QCCFAITH, useNA = "ifany")
+
+
+#short check:
+
+#first reverse to have the German coding:
+
+df$PCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_school  = recode(PCCFAITH, 
+                             "1" = "5",                                  
+                             "2" = "4",
+                             "3" = "3",
+                             "4" = "2",
+                             "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_school <- factor(df$rating_school, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_school, df$PCCFAITH)
+
+
+###do the same for the pension variable
+
+df$QCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_pension  = recode(QCCFAITH, 
+                             "1" = "5",                                  
+                             "2" = "4",
+                             "3" = "3",
+                             "4" = "2",
+                             "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_pension <- factor(df$rating_pension, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_pension, df$QCCFAITH)
+
+
+#################
+#continue recoding: now to 3-point scale
+
+df <- df %>%
+  mutate(rating_school_factor = recode(rating_school, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_school, df$rating_school_factor, useNA = "ifany")
+
+
+#same for pension policy experiment
+
+df <- df %>%
+  mutate(rating_pension_factor = recode(rating_pension, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_pension, df$rating_pension_factor, useNA = "ifany")
+
+
+```
+
+
+## Robustness Check Different Policy Issue ENEF, France
+
+
+```{r}
+m_enef_pension <- polr(rating_pension_factor ~ experiment_groups_pension, 
+                   data = df, 
+               method = "probit",
+                   Hess=TRUE)
+
+summary(m_enef_pension)
+
+#pvalues
+
+(ctable <- coef(summary(m_enef_pension)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+```
+
+
+```{r}
+names_vec_nov <- c("CC \n Approves", 
+                   "CC \n Disapproves", 
+                   "Haut Conseil \n de l'Éducation \n Approves", 
+                   "Haut Conseil \n de l'Éducation \n Disapproves", " ", " ")
+
+stargazer(m_enef_pension, 
+          style = "ajps",
+          type = "latex",
+                    coef = list(summary(m_enef_pension)$coefficients[,1]),
+          title            = "Results of Ordinal Probit Regression",
+          covariate.labels = c(names_vec_nov[1:4], 
+                               names(m_enef_pension$zeta))
+          ,
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Pension Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Standard errors clustered by respondent."
+)
+
+
+
+```
+
+
+# Knowledge Robustness CC
+
+
+```{r}
+df$PCONINS_3[df$PCONINS_3 > 11] <- NA
+
+prop.table(table(df$PCONINS_3, useNA = "ifany"))
+
+
+df$know_france <- ifelse(df$PCONINS_3 == 1, 1, 0)
+table(df$know_france)
+prop.table(table(df$know_france, useNA = "ifany"))
+
+#Run model:
+
+enef_know_ia <- polr(rating_school_factor ~ experiment_groups_school*know_france,
+                     method = "probit",
+                       Hess=TRUE,
+                     data = df)
+
+summary(enef_know_ia)
+
+
+#pvalues
+
+ctable <- coef(summary(enef_know_ia))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+#Nothing significant. Make table:
+
+stargazer(enef_know_ia, 
+          style = "ajps",
+          type = "latex",
+          coef = list(summary(enef_know_ia)$coefficients[,1]),
+          title            = "Results of Ordinal Probit Regression",
+          column.labels = "test",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatment group. The baseline category is the control group (no treatment)"
+)
+
+```
+
+## School Policy with 5 point scale:
+
+```{r}
+m_enef_school_5 <- polr(rating_school ~ experiment_groups_school, 
+                       data = df, 
+                       method = "probit",
+                       Hess=TRUE)
+
+summary(m_enef_school_5)
+
+#pvalues
+
+(ctable <- coef(summary(m_enef_school_5)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+#make regression table:
+
+names_vec_nov <- c("CC \n Approves", 
+                   "CC \n Disapproves", 
+                   "Haut Conseil \n de l'Éducation \n Approves", 
+                   "Haut Conseil \n de l'Éducation \n Disapproves", " ", " ")
+
+
+stargazer(m_enef_school_5, 
+          style = "ajps",
+          type = "latex",
+          coef = list(summary(m_enef_school_5)$coefficients[,1]),
+          title            = "Results of Ordinal Probit Regression",
+          covariate.labels = c(names_vec_nov[1:4], 
+                               names(m_enef_school_5$zeta))
+          ,
+          column.labels = "test",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatment group. The baseline category is the control group (no treatment)"
+)
+
+
+```
+
+
+
+
