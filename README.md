@@ -19,34 +19,30 @@ Proceed as follows:
 5.	The direct link for GIP wave 27 is: https://search.gesis.org/research_data/ZA6901
 6.	Download the codebook
 7.	Please fill out the data request form for all three datasets and request the datasets from GESIS.
-8.	Name the datasets as specified in the replication code.
+8.	Name the datasets as specified in the replication code and place them in a folder called "Data".
 9.	Merge the data according to the replication code.
 
 
-The Zelig version used in the main code is out-dated. In order to use it, we provide script XXXX to install the Zelig Version used in the analysis scripts. 
+Disclaimer:
 
-
+The Zelig version used in the main code is out-dated. In order to use it, we provide script "installed_archived_zeligverse.R" to install the Zelig Version used in the analysis scripts. We also provide the zeligverse.tar required in the repo. 
 
 
 To replicate the German findings, run the code in the following order:
 
-.rmd
-
-- 01.DataPrep
-- 02GIP analysios
-- 03 Robustness
-
-
-
+- 01_GIP_dataprep.Rmd
+- 02_gip_analysis_gip_analyses.Rmd
+- 03_gip_robustness.Rmd
 
 
 To replicate the French findings, run the code in the following order:
 
+- 01_ENEF_analysis.Rmd
+- 02_ENEF_Robustness.Rmd
 
 
 ToDo:
 - CH soll mir das Stata file schicken
-- DAhinter schreiben welches Script welch Figures und Tables repliziert
 
 
 
