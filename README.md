@@ -36,6 +36,10 @@ To replicate the French findings, run the code in the following order:
 - 01_ENEF_analysis.Rmd
 - 02_ENEF_Robustness.Rmd
 
+
+
+# System Hints
+
 This code was tested on:
 
 - version.string R version 4.1.0 (2021-05-18)
