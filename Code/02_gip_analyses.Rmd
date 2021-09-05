@@ -1,0 +1,1082 @@
+---
+title: "Gip Analysis Germany"
+author: "Sebastian Sternberg"
+date: "02 08 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+rm(list = ls())
+
+require(MASS)
+require(zeligverse)
+require(magrittr)
+require(dplyr)
+require(stargazer)
+
+load("../Data/gip_merge.Rda")
+
+
+```
+
+## Table 1 & Jitterplot
+
+```{r}
+gip_merge$experiment_groups_jan <- as.character(gip_merge$experiment_groups_jan)
+gip_merge$experiment_groups_nov <- as.character(gip_merge$experiment_groups_nov)
+
+#create outcome vector
+
+response_vector <- c(gip_merge$sup_factor_nov, gip_merge$sup_factor_jan)
+
+#back to factor
+response_vector <- as.factor(response_vector)
+
+#create experimental group vector
+
+experiment_gr <- c(gip_merge$experiment_groups_nov, gip_merge$experiment_groups_jan)
+
+#as factor as well  
+experiment_gr <- as.factor(experiment_gr)
+
+#ids for clustered SEs:
+
+ids_gip <- as.factor(c(gip_merge$id_g, gip_merge$id_g))
+
+#create new data set:
+
+gip_analysis <- cbind.data.frame(ids_gip, experiment_gr, response_vector)
+
+#omit NAs for clustered SE estimation
+
+gip_analysis <- na.omit(gip_analysis) #get rid of NAs. These are the respondents who refused to answer or did not answer
+
+
+#recode outcome :
+
+gip_analysis <- gip_analysis %>%
+  mutate(response_vector = recode(response_vector, 
+                                  "1" = "disagree",                                  
+                                  "2" = "indifferent",
+                                  "3" = "agree"
+  )
+  ) 
+
+#check order: important for later that the direction of the regression is in line with the order of the factor:
+
+levels(gip_analysis$response_vector) #check
+merge_trust_gov <- data.frame(ids_gip = as.factor(gip_merge$id_g), trust_gov = as.numeric(gip_merge$AK27034))
+
+gip_analysis <- left_join(gip_analysis,merge_trust_gov)
+
+
+party_affiliation_merge <- data.frame(ids_gip = as.factor(gip_merge$id_g), AA25039 = as.factor(gip_merge$AA25039))
+
+
+#recode sunday_election
+gip_analysis <- left_join(gip_analysis, party_affiliation_merge)
+
+gip_analysis$AA25039[gip_analysis$AA25039 < 0] <- NA
+gip_analysis$AA25039[gip_analysis$AA25039 == "1"] <- NA
+gip_analysis$AA25039[gip_analysis$AA25039 == "2"] <- NA
+
+gip_analysis <- gip_analysis %>%
+  mutate(sunda_election = recode(as.factor(AA25039), 
+                                 "3" = "CDU/CSU",
+                                 "4" = "SPD",
+                                 "5" = "FDP",
+                                 "6" = "Greens",
+                                 "7" = "Lefts",
+                                 "8" = "Other", #NPD
+                                 "9" = "Other", #Piraten
+                                 "10" = "Other",
+                                 "11" = "AfD"
+  )
+  )
+
+gip_analysis$sunda_election[gip_analysis$sunda_election ==  "NA"] <- NA
+gip_analysis$sunda_election[gip_analysis$sunda_election ==  "-99"] <- NA
+gip_analysis$sunda_election[gip_analysis$sunda_election ==  "-98"] <- NA
+
+
+#drop unused levels:
+
+gip_analysis$sunda_election <-  droplevels(gip_analysis$sunda_election)
+
+table(gip_analysis$sunda_election, useNA = "ifany")
+sunda_election_int <- as.integer(gip_analysis$sunda_election)
+
+
+#recode for plotting:
+
+gip_analysis <- gip_analysis %>%
+  mutate(sup_3 = recode(response_vector, 
+                        "disagree" = "1",                                  
+                        "indifferent" = "2",
+                        "agree" = "3"
+  )
+  ) 
+
+gip_analysis$sup_3 <- as.numeric(as.character(gip_analysis$sup_3 ))
+
+
+par(mar  = c(4,6,2,2))
+
+
+plot(jitter(gip_analysis$sup_3[gip_analysis$experiment_gr == "Control"]), 
+     jitter(sunda_election_int[gip_analysis$experiment_gr == "Control"]), pch=19, cex=.6,
+     xlab="Support for School Security Law", ylab="", axes=F)
+axis(1, at = c(1:3), col="white", col.axis="black", labels = c("disagree", "indifferent", "agree"))
+
+axis(2, at=c(1:7), 
+     labels= levels(gip_analysis$sunda_election), 
+     col="white",
+     col.axis="black", cex.lab = 0.9, las = 1)
+
+
+
+table_germany <- round(prop.table(table(
+  gip_analysis$sunda_election[gip_analysis$experiment_gr == "Control"],
+      gip_analysis$response_vector[gip_analysis$experiment_gr == "Control"])
+), 3)*100
+
+
+write.table(table_germany, file = "table_germany_supportoverparty.txt", sep = ",", quote = FALSE, row.names = F)
+
+#########################
+#now the same for France:
+df <- read_dta("../Data/ENEF2017_legitimacy_experiment.dta")
+
+#Recode experimental groups:
+
+class(df$ID12)
+class(df$QEXPPOSINS)
+
+
+df$PEXPPOSINS <- as.factor(df$PEXPPOSINS)
+
+#recode the education variable
+
+df <- df %>%
+  mutate(experiment_groups_school = recode(PEXPPOSINS, 
+                                           "1" = "Control",                   
+                                           "2" = "CC_Approves",
+                                           "3" = "CC_Disapproves",
+                                           "4" = "Haut_Conseil_Edu_Approves",
+                                           "5" = "Haut_Conseil_Edu_Disapproves"
+  )
+  )
+
+
+df$QEXPPOSINS <- as.factor(df$QEXPPOSINS)
+
+#recode the pension variable
+df <- df %>%
+  mutate(experiment_groups_pension = recode(QEXPPOSINS, 
+                                            "1" = "Control",                                       
+                                            "2" = "CC_Approves",
+                                            "3" = "CC_Disapproves",
+                                            "4" = "Conseil_d_Orientation_appr.",
+                                            "5" = "Conseil_d_Orientation_disappr."
+  )
+  )
+
+
+#recode NAs
+df$PCCFAITH[df$PCCFAITH > 6] <- NA
+df$QCCFAITH[df$QCCFAITH > 6] <- NA
+
+table(df$PCCFAITH, useNA = "ifany")
+table(df$QCCFAITH, useNA = "ifany")
+
+
+#short check:
+
+#first reverse to have the German coding:
+
+df$PCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_school  = recode(PCCFAITH, 
+                                 "1" = "5",                                  
+                                 "2" = "4",
+                                 "3" = "3",
+                                 "4" = "2",
+                                 "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_school <- factor(df$rating_school, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_school, df$PCCFAITH)
+
+
+###do the same for the pension variable
+
+df$QCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_pension  = recode(QCCFAITH, 
+                                  "1" = "5",                                  
+                                  "2" = "4",
+                                  "3" = "3",
+                                  "4" = "2",
+                                  "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_pension <- factor(df$rating_pension, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_pension, df$QCCFAITH)
+
+
+#################
+#continue recoding: now to 3-point scale
+
+df <- df %>%
+  mutate(rating_school_factor = recode(rating_school, 
+                                       "1" = "disagree",                                  
+                                       "2" = "disagree",
+                                       "3" = "indifferent",
+                                       "4" = "agree",
+                                       "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_school, df$rating_school_factor, useNA = "ifany")
+
+
+#same for pension policy experiment
+
+df <- df %>%
+  mutate(rating_pension_factor = recode(rating_pension, 
+                                        "1" = "disagree",                                  
+                                        "2" = "disagree",
+                                        "3" = "indifferent",
+                                        "4" = "agree",
+                                        "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_pension, df$rating_pension_factor, useNA = "ifany")
+df$OQ10 <- as.factor(df$OQ10)
+
+df <- df %>%
+  mutate(party_id = recode(OQ10, 
+                           "1" = "Other", #Lutte Ouvri?re                                      
+                           "2" = "Other", #Nouveau Parti Anticapitaliste
+                           "3" = "Other", #Parti Communiste Francais
+                           "4" = "Parti de Gauche",
+                           "5" = "Other", #Nouvelle Donne
+                           "6" = "Parti Socialiste",
+                           "7" = "Other",#Parti radical de gauche
+                           "8" = "Les Verts",
+                           "9" = "Other", #Autres Ecologie
+                           "10" = "Le MoDem",
+                           "11" = "L'UDI",
+                           "12" = "Les R?publicains",
+                           "13" = "Other", #Debout la France
+                           "14" = "Rassemblement National",
+                           "15" = "Other",
+                           "16" = "En marche!"
+  )
+  )
+
+prop.table(table(df$party_id, useNA = "ifany"))
+
+df$party_id <-  droplevels(df$party_id)
+
+partyid_int <- as.integer(df$party_id)
+
+
+
+#recode for plotting:
+
+df <- df %>%
+  mutate(sup_3 = recode(rating_school_factor, 
+                        "disagree" = "1",                                  
+                        "indifferent" = "2",
+                        "agree" = "3"
+  )
+  ) 
+
+df$sup_3 <- as.numeric(as.character(df$sup_3 ))
+
+
+df$QCONF4_2_fac <- as.factor(df$QCONF4_2)
+
+df <- df %>%
+  mutate(trust_cc = recode(QCONF4_2_fac, 
+                           "0" = "no trust at all",                                       
+                           "1" = "no trust at all",
+                           "2" = "no trust at all",
+                           "3" = "no trust",
+                           "4" = "rather not trust",
+                           "5" = "indifferent",
+                           "6" = "rather trust",
+                           "7" = "high trust",
+                           "8" = "very high trust",
+                           "9" = "very high trust",
+                           "10" = "very high trust"
+  )
+  )
+
+table(df$trust_cc, df$QCONF4_2_fac)
+
+#Recode to numeric:
+
+df <- df %>%
+  mutate(trust_cc_num = recode(trust_cc, 
+                               "no trust at all" = "1",
+                               "no trust" = "2",
+                               "rather not trust" = "3",
+                               "indifferent" = "4",
+                               "rather trust" = "5",
+                               "high trust" = "6",
+                               "very high trust" = "7"
+  )
+  )
+
+df$trust_cc_num <- as.numeric(as.character(df$trust_cc_num))
+
+df$trust_cc_num[df$trust_cc_num > 11] <- NA
+
+table(df$trust_cc_num, useNA = "ifany")
+table(df$trust_cc)
+
+df$OQ10 <- as.factor(df$OQ10)
+
+df <- df %>%
+  mutate(party_id = recode(OQ10, 
+                           "1" = "Other", #Lutte Ouvri?re                                      
+                           "2" = "Other", #Nouveau Parti Anticapitaliste
+                           "3" = "Other", #Parti Communiste Francais
+                           "4" = "Parti de Gauche",
+                           "5" = "Other", #Nouvelle Donne
+                           "6" = "Parti Socialiste",
+                           "7" = "Other",#Parti radical de gauche
+                           "8" = "Les Verts",
+                           "9" = "Other", #Autres Ecologie
+                           "10" = "Le MoDem",
+                           "11" = "L'UDI",
+                           "12" = "Les R?publicains",
+                           "13" = "Other", #Debout la France
+                           "14" = "Rassemblement National",
+                           "15" = "Other",
+                           "16" = "En marche!"
+  )
+  )
+
+prop.table(table(df$party_id, useNA = "ifany"))
+
+df$party_id <-  droplevels(df$party_id)
+
+partyid_int <- as.integer(df$party_id)
+
+
+
+#recode for plotting:
+
+df <- df %>%
+  mutate(sup_3 = recode(rating_school_factor, 
+                        "disagree" = "1",                                  
+                        "indifferent" = "2",
+                        "agree" = "3"
+  )
+  ) 
+
+df$sup_3 <- as.numeric(as.character(df$sup_3 ))
+
+
+
+table_france <- round(prop.table(table(
+  df$party_id[df$experiment_groups_school == "Control"],
+  df$rating_school_factor[df$experiment_groups_school == "Control"])
+  ), 3)*100
+
+
+write.table(table_france, file = "table_france_supportoverparty.txt", sep = ",", quote = FALSE, row.names = F)
+
+
+
+```
+
+
+
+## Figure 2:
+
+Set up the data for the ordered probit:
+
+```{r}
+
+gip_merge$experiment_groups_jan <- as.character(gip_merge$experiment_groups_jan)
+gip_merge$experiment_groups_nov <- as.character(gip_merge$experiment_groups_nov)
+
+#create outcome vector
+
+response_vector <- c(gip_merge$sup_factor_nov, gip_merge$sup_factor_jan)
+
+#back to factor
+response_vector <- as.factor(response_vector)
+
+#create experimental group vector
+
+experiment_gr <- c(gip_merge$experiment_groups_nov, gip_merge$experiment_groups_jan)
+  
+#as factor as well  
+experiment_gr <- as.factor(experiment_gr)
+
+#ids for clustered SEs:
+
+ids_gip <- as.factor(c(gip_merge$id_g, gip_merge$id_g))
+
+#create new data set:
+
+gip_analysis <- cbind.data.frame(ids_gip, experiment_gr, response_vector)
+
+#omit NAs for clustered SE estimation
+
+gip_analysis <- na.omit(gip_analysis) #get rid of NAs. These are the respondents who refused to answer or did not answer
+
+
+#recode outcome :
+
+gip_analysis <- gip_analysis %>%
+  mutate(response_vector = recode(response_vector, 
+                             "1" = "disagree",                                
+                             "2" = "indifferent",
+                             "3" = "agree"
+  )
+  ) 
+
+#check order: important for later that the direction of the regression is in line with the order of the factor:
+
+levels(gip_analysis$response_vector) #check
+
+
+```
+
+Estimate an ordered probit regression. Afterwards, make a coefficient plot. 
+
+```{r}
+#estimate ordered probit:
+
+m_gip_basic <- polr(response_vector ~ experiment_gr,
+                    data = gip_analysis,
+                    method = "probit",
+                   Hess=TRUE)
+
+summary(m_gip_basic)
+
+#pvalues
+
+(ctable <- coef(summary(m_gip_basic)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+#estimate clustered SEs:
+
+library(lmtest)
+library(sandwich)
+
+ses_m_gip_basic <- coeftest(m_gip_basic, vcov=vcovCL(m_gip_basic, factor(gip_analysis$ids_gip) ))
+
+###plot coefs:
+
+coef_vec <- summary(m_gip_basic)$coefficients[1:6,1]   # Extract coefficient estimates
+coef_vec <- c(coef_vec[3:4], coef_vec[5:6], coef_vec[1:2]) #reorder so that GFCC is first
+
+
+names_vec<- c("GFCC \n Approves", 
+                   "GFCC \n Disapproves", 
+                                 "Conference of the \n Ministers of Education \n  Approves", 
+                   "Conference of the \n Ministers of Education \n Disapproves", 
+                                 "Data Security \n Official Approves",     
+              "Data Security \n Official Disapproves")
+
+#get clustered SEs:
+
+se_vec <- ses_m_gip_basic[1:6,2]
+se_vec <- c(se_vec[3:4], se_vec[5:6], se_vec[1:2]) #reorder so that GFCC is first
+
+#outfolder to save
+outfolder <- ("../Figures")
+
+
+pdf(paste(outfolder,"/coefplot_gip_base.pdf",sep = ""), width = 8, height = 8)
+
+#adjust margins:
+par(mar  = c(4,10,2,2))
+
+plot(coef_vec, length(coef_vec):1, 
+     pch=19, 
+     cex=.8, 
+     axes=F, 
+     ylab="", 
+     xlab="Ordered Probit Coefficients", 
+     xlim=c(-0.7, 0.7))
+axis(1)
+axis(2, at=length(coef_vec):1, label=names_vec, col="white", las = 1)
+abline(v=0, lty=2) # add zero reference line
+
+#plot 95% CIs
+segments(coef_vec - qnorm(0.975)*se_vec,  length(coef_vec):1, coef_vec + qnorm(0.975)*se_vec, length(coef_vec):1) # add confidence intervals
+
+#add 90% CIs
+segments(coef_vec - qnorm(0.95)*se_vec,  length(coef_vec):1, coef_vec + qnorm(0.95)*se_vec, length(coef_vec):1, lwd = 2) # add confidence intervals
+
+dev.off()
+
+```
+
+Make latex table for Appendix mit clusted SEs per respondent ID:
+
+```{r}
+
+
+stargazer(m_gip_basic, 
+          style = "ajps",
+          type = "latex",
+          coef = list(summary(m_gip_basic)$coefficients[,1]),
+           se = list(ses_m_gip_basic[,2]),
+          #t = ses_m_gip_basic[,3],
+          p = list(ses_m_gip_basic[, 4]),
+          title            = "Results of Ordinal Probit Regression",
+          covariate.labels = c(names_vec, 
+                               names(m_gip_basic$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Standard errors clustered by respondent."
+)
+
+```
+
+## Quantities of Interests: Figure 3
+
+For us, not the raw coefficients are per se interesting, but even more so the first differences between the treatement groups. That is, the effect between the GFCC approving and disapproving, and the same for the Minister of education.
+
+Treatment effect is the difference between the control group and the gfcc approves or disapproves group:
+
+```{r}
+
+z_gfcc_treatment_effect <- zelig(response_vector ~ experiment_gr,
+               model = "oprobit", 
+               data = gip_analysis)
+
+summary(z_gfcc_treatment_effect)
+
+#set up scenarios:
+
+s_control <- setx(z_gfcc_treatment_effect, experiment_gr = "Control") #control group
+s_gfcc_agree <- setx(z_gfcc_treatment_effect, experiment_gr = "GFCC_Approves") #gfcc_agrees
+
+
+fd_control_agree <- sim(z_gfcc_treatment_effect, s_control,s_gfcc_agree) #simulate and calculate fd
+plot(fd_control_agree)
+
+```
+
+Similar simulation but with GFCC disapproves, using the same model:
+
+```{r}
+
+s_control <- setx(z_gfcc_treatment_effect, experiment_gr = "Control") #control group
+s_gfcc_disagrees <- setx(z_gfcc_treatment_effect, experiment_gr = "GFCC_Disapproves") #gfcc_agrees
+
+
+fd_control_disagree <- sim(z_gfcc_treatment_effect, s_control,s_gfcc_disagrees) #simulate and calculate fd
+summary(fd_control_disagree)
+plot(fd_control_disagree)
+
+
+```
+
+
+Make plot of FDs:
+
+```{r}
+mean_fd_control_gfccdisapp<- colMeans(fd_control_disagree$sim.out$x1$fd[[1]])
+
+outcome_vector <- c("Probability of \n disagreeing", "Probability of \n being indifferent", 
+                    "Probability of \n agreeing")
+
+pdf(paste(outfolder,"/fd_control_disapprv.pdf",sep = ""), width = 6, height = 6)
+
+par(mar=c(5, 6, 2, 0))
+
+plot(mean_fd_control_gfccdisapp, 3:1, 
+     pch=c(19),
+     ann=F,  
+     xlim=c(-0.1, 0.1), 
+     #xlabel = "Test",
+     # ylim=c(-3.1, 2),
+     axes=F,
+     cex = 0.8)
+     #col="maroon3")
+#rect(-2, -2, 2, 2, border=F, col="grey92")
+axis(1)
+axis(2, at=3:1, label= outcome_vector, col="white", las = 1)
+
+title("", xlab = "First Difference  \n Control Group vs. GFCC Approves", ylab = "")
+#axis(4, las = 1) 
+abline(v=0, lty=2)
+
+fd_ci95 <- apply(fd_control_disagree$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.025, 0.975))
+segments(fd_ci95[1, ], 3:1,
+         fd_ci95[2, ], 3:1) # Add 95% Confidence Intervals
+
+fd_ci_90 <- apply(fd_control_disagree$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.05, 0.95))
+segments(fd_ci_90[1, ], 3:1,
+         fd_ci_90[2, ], 3:1,
+         lwd = 2) # Add 95% Confidence Intervals
+
+dev.off()
+
+```
+
+Plot the FD in one graph
+
+```{r}
+mean_fd_control_gfccapp<- colMeans(fd_control_agree$sim.out$x1$fd[[1]])
+
+
+pdf(paste(outfolder,"/fd_control_apprv.pdf",sep = ""), width = 6, height = 6)
+
+par(mar=c(5, 6, 2, 0))
+
+plot(mean_fd_control_gfccapp, 3:1, 
+     pch=c(19),
+     ann=F,  
+     xlim=c(-0.1, 0.1), 
+     #xlabel = "Test",
+     # ylim=c(-3.1, 2),
+     axes=F,
+     cex = 0.8)
+     #col="maroon3")
+#rect(-2, -2, 2, 2, border=F, col="grey92")
+axis(1)
+axis(2, at=3:1, label= outcome_vector, col="white", las = 1)
+
+title("", xlab = "First Difference  \n Control Group vs. GFCC Approves", ylab = "")
+#axis(4, las = 1) 
+abline(v=0, lty=2)
+
+fd_ci95 <- apply(fd_control_agree$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.025, 0.975))
+segments(fd_ci95[1, ], 3:1,
+         fd_ci95[2, ], 3:1) # Add 95% Confidence Intervals
+
+fd_ci_90 <- apply(fd_control_agree$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.05, 0.95))
+segments(fd_ci_90[1, ], 3:1,
+         fd_ci_90[2, ], 3:1,
+         lwd = 2) # Add 95% Confidence Intervals
+
+dev.off()
+
+```
+
+## Figure 4a and 4b
+
+Effect of GFCC treatment on partisans of the AfD and Greens
+
+```{r}
+
+party_affiliation_merge <- data.frame(ids_gip = as.factor(gip_merge$id_g), AA25039 = as.factor(gip_merge$AA25039))
+
+
+#recode sunday_election
+gip_analysis <- left_join(gip_analysis, party_affiliation_merge)
+
+gip_analysis$AA25039[gip_analysis$AA25039 < 0] <- NA
+gip_analysis$AA25039[gip_analysis$AA25039 == "1"] <- NA
+gip_analysis$AA25039[gip_analysis$AA25039 == "2"] <- NA
+
+gip_analysis <- gip_analysis %>%
+     mutate(sunda_election = recode(as.factor(AA25039), 
+         "3" = "CDU/CSU",
+         "4" = "SPD",
+         "5" = "FDP",
+         "6" = "Greens",
+         "7" = "Lefts",
+         "8" = "Other", #NPD
+         "9" = "Other", #Piraten
+         "10" = "Other",
+         "11" = "AfD"
+     )
+)
+
+gip_analysis$sunda_election[gip_analysis$sunda_election ==  "NA"] <- NA
+gip_analysis$sunda_election[gip_analysis$sunda_election ==  "-99"] <- NA
+gip_analysis$sunda_election[gip_analysis$sunda_election ==  "-98"] <- NA
+
+
+#drop unused levels:
+
+gip_analysis$sunda_election <-  droplevels(gip_analysis$sunda_election)
+
+table(gip_analysis$sunda_election, useNA = "ifany")
+sunda_election_int <- as.integer(gip_analysis$sunda_election)
+
+
+#recode for plotting:
+
+gip_analysis <- gip_analysis %>%
+  mutate(sup_3 = recode(response_vector, 
+                             "disagree" = "1",
+                             "indifferent" = "2",
+                             "agree" = "3"
+  )
+  ) 
+
+gip_analysis$sup_3 <- as.numeric(as.character(gip_analysis$sup_3 ))
+
+
+outfolder <- ("../Figures")
+
+pdf(paste(outfolder,"/jitter_party_ger.pdf",sep = ""), width = 8, height = 8)
+
+par(mar  = c(4,6,2,2))
+
+
+plot(jitter(gip_analysis$sup_3[gip_analysis$experiment_gr == "Control"]), jitter(sunda_election_int[gip_analysis$experiment_gr == "Control"]), pch=19, cex=.6,
+     xlab="Support for School Security Law", ylab="", axes=F)
+axis(1, at = c(1:3), col="white", col.axis="black", labels = c("disagree", "indifferent", "agree"))
+
+axis(2, at=c(1:7), 
+     labels= levels(gip_analysis$sunda_election), 
+     col="white",
+     col.axis="black", cex.lab = 0.9, las = 1)
+
+dev.off()
+
+```
+
+## Figure 4a
+
+Look at AfD Voters only:
+
+```{r}
+
+#dummy for AfD:
+
+gip_analysis$afd_voter <- ifelse(gip_analysis$sunda_election == "AfD", 1, 0)
+
+table(gip_analysis$afd_voter, useNA = "ifany")
+
+#run model
+m_afd_dummy <- polr(response_vector ~ experiment_gr*afd_voter, 
+                   data = gip_analysis, 
+                   Hess=TRUE)
+
+summary(m_afd_dummy)
+
+#pvalues
+
+(ctable <- coef(summary(m_afd_dummy)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+#####################
+###Simulate
+z.afd <- zelig(response_vector ~ experiment_gr*afd_voter,
+               model = "ologit", data = gip_analysis)
+
+summary(z.afd)
+
+#gfcc disapproves
+
+s_gfcc_agree_no_afd <- setx(z.afd, experiment_gr = "GFCC_Disapproves", afd_voter = 0)
+s_gfcc_agree_afd <- setx(z.afd, experiment_gr = "GFCC_Disapproves", afd_voter = 1)
+
+#simulate fd
+fd_afd <- sim(z.afd, s_gfcc_agree_no_afd,s_gfcc_agree_afd)
+summary(fd_afd)
+
+plot(fd_afd)
+
+```
+
+Compare control group AfD with court disapproving policy:
+
+```{r}
+
+s_gfcc_agree_no_afd <- setx(z.afd, experiment_gr = "Control", afd_voter = 1)
+s_gfcc_agree_afd <- setx(z.afd, experiment_gr = "GFCC_Disapproves", afd_voter = 1)
+
+#simulate fd
+fd_afd <- sim(z.afd, s_gfcc_agree_no_afd,s_gfcc_agree_afd)
+summary(fd_afd)
+
+plot(fd_afd)
+
+```
+
+Make regression table for the Appendix of the models.
+
+```{r}
+
+gip_analysis$afd_voter <- ifelse(gip_analysis$sunda_election == "AfD", 1, 0)
+
+#ommit NAs because cluster function cannot handle them
+
+afd_data <- data.frame(afd_voter = gip_analysis$afd_voter, response_vector = gip_analysis$response_vector,
+                       experiment_gr = gip_analysis$experiment_gr, ids_gip = gip_analysis$ids_gip) %>% na.omit
+
+#run model
+m_afd_dummy <- polr(response_vector ~ experiment_gr*afd_voter, 
+                   data = afd_data, 
+                   Hess=TRUE)
+
+ses_m_gip_afddummy <- coeftest(m_afd_dummy, vcov=vcovCL(m_afd_dummy, factor(afd_data$ids_gip)))
+
+
+names_vec_afd <- c("Data Security Official Approves","Data Security Official Disapproves",
+                               "GFCC Approves", 
+                   "GFCC Disapproves", 
+                                "Conference of the Ministers of Education Approves", 
+                               "Conference of the Ministers of Education Disapproves","AfD Voter (=1)")
+
+#create interaction names
+
+names_vec_afd_ia <- NA
+
+for(i in 1:(length(names_vec_afd)-1)){
+  
+names_vec_afd_ia[i] <-  paste(names_vec_afd[i], "X AfD-Voter")
+  
+}
+
+
+#make regression table
+stargazer(m_afd_dummy, 
+          style = "ajps",
+          type = "latex",
+          coef = list(summary(m_afd_dummy)$coefficients[,1]),
+           se = list(ses_m_gip_afddummy[,2]),
+          #t = ses_m_gip_basic[,3],
+          p = list(ses_m_gip_afddummy[, 4]),
+          title            = "Results of Ordinal Probit Regression",
+          covariate.labels = c(names_vec_afd, names_vec_afd_ia,
+                              names(m_afd_dummy$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Standard errors clustered by respondent."
+)
+
+
+
+```
+
+Plot AfD results:
+
+```{r}
+pdf(paste(outfolder,"/fd_afd1.pdf",sep = ""), width = 12, height = 8)
+
+par(mar=c(5, 6, 2, 1))
+plot(colMeans(fd_afd$sim.out$x1$fd[[1]]), 3:1, 
+     pch=c(19),
+     ann=F,  
+     xlim=c(-0.5, 0.5), 
+     axes=F, 
+     cex = 0.8)
+
+axis(1)
+axis(2, at=3:1, label= outcome_vector, col="white", las = 1)
+
+title("", xlab = "FD AfD-Partisans \n Control Group versus GFCC Disapproves", ylab = "")
+
+abline(v=0, lty=2)
+
+fd_ci_95 <- apply(fd_afd$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.025, 0.975))
+segments(fd_ci_95[1, ], 3:1,
+         fd_ci_95[2, ], 3:1,
+         lwd = 1) # Add 95% Confidence Intervals
+
+fd_ci_90 <- apply(fd_afd$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.05, 0.95))
+segments(fd_ci_90[1, ], 3:1,
+         fd_ci_90[2, ], 3:1,
+         lwd = 3) # Add 90% Confidence Intervals
+
+dev.off()
+
+
+```
+
+Dummy for Greens:
+
+```{r}
+
+#dummy for Greens:
+gip_analysis$green_voter <- ifelse(gip_analysis$sunda_election == "Greens", 1, 0)
+
+table(gip_analysis$green_voter, useNA = "ifany")
+
+#run model
+m_green_dummy <- polr(response_vector ~ experiment_gr*green_voter, 
+                    data = gip_analysis, 
+                    Hess=TRUE)
+
+summary(m_green_dummy)
+
+#pvalues
+
+(ctable <- coef(summary(m_green_dummy)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+#####################
+###Simulate
+z.greens <- zelig(response_vector ~ experiment_gr*green_voter,
+               model = "ologit", data = gip_analysis)
+
+summary(z.greens)
+
+#gfcc disapproves
+
+s_gfcc_agree_no_green <- setx(z.greens, experiment_gr = "Control", green_voter = 0)
+s_gfcc_agree_green <- setx(z.greens, experiment_gr = "GFCC_Approves", green_voter = 1)
+
+#simulate fd
+fd_greens <- sim(z.greens, s_gfcc_agree_no_green,s_gfcc_agree_green)
+summary(fd_greens)
+
+plot(fd_greens)
+
+```
+
+Make regression table for Appendix:
+
+
+```{r}
+
+#ommit NAs because cluster function cannot handle them
+
+green_data <- data.frame(green_voter = gip_analysis$green_voter, response_vector = gip_analysis$response_vector,
+                       experiment_gr = gip_analysis$experiment_gr, ids_gip = gip_analysis$ids_gip) %>% na.omit
+
+#run model
+m_green_dummy <- polr(response_vector ~ experiment_gr*green_voter, 
+                    data = green_data, 
+                    Hess=TRUE)
+
+ses_m_gip_greendummy <- coeftest(m_green_dummy, vcov=vcovCL(m_green_dummy, factor(green_data$ids_gip)))
+
+
+names_vec_greens <- c("Data Security Official Approves","Data Security Official Disapproves",
+                               "GFCC Approves", 
+                   "GFCC Disapproves", 
+                                "Conference of the Ministers of Education Approves", 
+                               "Conference of the Ministers of Education Disapproves","Green Voter (=1)")
+
+#create interaction names
+
+names_vec_greens_ia <- NA
+
+for(i in 1:(length(names_vec_greens)-1)){
+  
+names_vec_greens_ia[i] <-  paste(names_vec_greens[i], "X Green-Voter")
+  
+}
+
+
+#make regression table
+stargazer(m_green_dummy, 
+          style = "ajps",
+          type = "latex",
+          coef = list(summary(m_green_dummy)$coefficients[,1]),
+           se = list(ses_m_gip_greendummy[,2]),
+          #t = ses_m_gip_basic[,3],
+          p = list(ses_m_gip_greendummy[, 4]),
+          title            = "Results of Ordinal Probit Regression",
+          covariate.labels = c(names_vec_greens, names_vec_greens_ia,
+                              names(m_green_dummy$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Standard errors clustered by respondent."
+)
+
+
+```
+
+
+Plot it:
+
+
+```{r}
+
+s_gfcc_agree_no_green <- setx(z.greens, experiment_gr = "Control", green_voter = 1)
+s_gfcc_agree_green <- setx(z.greens, experiment_gr = "GFCC_Approves", green_voter = 1)
+
+#simulate fd
+fd_greens <- sim(z.greens, s_gfcc_agree_no_green,s_gfcc_agree_green)
+summary(fd_greens)
+
+plot(fd_greens)
+
+
+```
+
+
+Plot results for the Greens:
+
+```{r}
+
+pdf(paste(outfolder,"/fd_greens1.pdf",sep = ""), width = 12, height = 8)
+
+par(mar=c(5, 6, 2, 1))
+plot(colMeans(fd_greens$sim.out$x1$fd[[1]]), 3:1, 
+     pch=c(19),
+     ann=F,  
+     xlim=c(-0.5, 0.5), 
+     axes=F, 
+     cex = 0.8)
+
+axis(1)
+axis(2, at=3:1, label= outcome_vector, col="white", las = 1)
+
+title("", xlab = "FD Greens-Partisans \n Control Group versus GFCC Approves", ylab = "")
+#axis(4, las = 1) 
+abline(v=0, lty=2)
+
+fd_ci_95 <- apply(fd_greens$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.025, 0.975))
+segments(fd_ci_95[1, ], 3:1,
+         fd_ci_95[2, ], 3:1) # Add 95% Confidence Intervals
+
+fd_ci_90 <- apply(fd_greens$sim.out$x1$fd[[1]], 2, quantile, probs = c(0.05, 0.95))
+segments(fd_ci_90[1, ], 3:1,
+         fd_ci_90[2, ], 3:1,
+         lwd = 3) # Add 95% Confidence Intervals
+
+dev.off()
+
+```
+
+
+
+
+
+
+
+

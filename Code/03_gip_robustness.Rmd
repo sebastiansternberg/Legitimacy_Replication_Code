@@ -1,0 +1,806 @@
+---
+title: "Robustness GIP"
+author: "Sebastian Sternberg"
+date: "14 Januar 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+
+rm(list = ls())
+
+require(magrittr)
+require(haven)
+require(foreign)
+require(dplyr)
+
+
+```
+
+
+```{r}
+
+gip_nov <- read_dta("../Data/GIP_W26_V2.dta")
+
+#subset only the necessary variables for experiment
+
+gip_nov <- gip_nov %>%
+  dplyr::select(id_g, 
+                expAK26001_1, #experimental groups
+                AK26001, #outcome experiment
+                AK26023, # amtierende Präsident knowledge welche der folgenden Personen...
+                AK26024 ) #knowledge welche der folgenden Personen..
+
+#Recode the I don't knows 
+gip_nov$AK26001[gip_nov$AK26001 < 0] <- NA
+
+gip_nov$expAK26001_1 <- as.factor(gip_nov$expAK26001_1)
+
+gip_nov <- gip_nov %>%
+  mutate(experiment_groups_nov = recode(expAK26001_1, 
+                                    "1" = "Control",                          
+                                    "2" = "GFCC_Approves",
+                                    "3" = "GFCC_Disapproves",
+                                    "4" = "Kultusminister_Approves",
+                                    "5" = "Kultusminister_Disapproves"
+  )
+  )
+
+
+gip_nov$AK26001 %<>% as.factor() 
+
+gip_nov <- gip_nov %>%
+  mutate(sup_factor_nov = recode(AK26001, 
+                             "1" = "disagree",                                
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check coding
+table(gip_nov$sup_factor_nov, gip_nov$AK26001, useNA = "ifany")
+
+
+```
+
+
+
+```{r}
+
+
+library(MASS)
+
+m_gip_nov <- polr(sup_factor_nov ~ experiment_groups_nov, 
+                  method = "probit",
+                   data = gip_nov, 
+                   Hess=TRUE)
+
+summary(m_gip_nov)
+
+#pvalues
+
+(ctable <- coef(summary(m_gip_nov)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+
+```
+
+
+Make table for the Appendix:
+
+```{r}
+library(stargazer)
+
+stargazer(m_gip_nov, 
+          style = "ajps",
+          type = "latex",
+          title            = "Results of Ordinal Probit Regression Using GIP Wave 26, November 2016",
+          covariate.labels = c("GFCC Approves", "GFCC Disapproves", "Minister of Education Approves", "Minister of Education Disapproves",
+                               names(m_gip_nov$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Only data from the GIP Wave 26 from November 2016 is used for estimation."
+)
+
+
+```
+
+
+
+## GIP Wave 27, January 2017
+
+Prepare the data. 
+
+```{r}
+
+gip_jan <- read_dta("../Data/GIP_W27_V1.dta")
+
+#subset only the necessary variables for experiment
+
+
+gip_jan <- gip_jan %>%
+  dplyr::select(id_g, expAK27030, #experimental groups
+                AK27030, #response experioment
+                AK27031, #trust_bverfg
+                AK27034, #trust_government
+                AK27035 ) #trust_judiciary
+
+
+
+table(gip_jan$expAK27030, useNA = "ifany") #why are there NAs in the experimental setup?
+table(gip_jan$AK27030, useNA = "ifany") #-99 and -90 are do not know.
+
+table(gip_jan$AK27031, useNA = "ifany") #-99 and -90 are do not know.
+
+
+#Recode the I don't knows to 
+gip_jan$AK27030[gip_jan$AK27030 < 0] <- NA
+
+table(gip_jan$AK27030, useNA = "ifany") #check
+
+#recode NAs in trust gfcc:
+gip_jan$AK27031[gip_jan$AK27031 < 0] <- NA
+
+table(gip_jan$AK27031, useNA = "ifany") #check
+
+#trust government:
+
+gip_jan$AK27034[gip_jan$AK27034 < 0] <- NA
+
+table(gip_jan$AK27034, useNA = "ifany") #check
+
+
+
+#recode experimental groups:
+
+gip_jan$expAK27030 <- as.factor(gip_jan$expAK27030)
+
+gip_jan <- gip_jan %>%
+  mutate(experiment_groups_jan = recode(expAK27030, 
+                                    "1" = "Control",                                       
+                                    "2" = "GFCC_Approves",
+                                    "3" = "GFCC_Disapproves",
+                                    "4" = "DPA_Approves",
+                                    "5" = "DPA_Disapproves"
+  )
+  )
+
+
+#recode outcome variable
+
+gip_jan$AK27030 %<>% as.factor() 
+
+gip_jan <- gip_jan %>%
+  mutate(sup_factor_jan = recode(AK27030, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+table(gip_jan$sup_factor_jan, gip_jan$AK27030, useNA = "ifany")
+
+```
+
+
+Run ordered probit only using the GIP January Wave 27 data:
+
+```{r}
+
+
+library(MASS)
+
+m_gip_jan <- polr(sup_factor_jan ~ experiment_groups_jan, 
+                   data = gip_jan, 
+                   Hess=TRUE,
+                  method = "probit")
+
+summary(m_gip_jan)
+
+#pvalues
+
+(ctable <- coef(summary(m_gip_jan)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+
+```
+
+Make regression table for Appendix:
+
+```{r}
+
+library(stargazer)
+
+stargazer(m_gip_jan, 
+          style = "ajps",
+          type = "latex",
+          title            = "Results of Ordinal Probit Regression Using GIP Wave 27, January 2017",
+          covariate.labels = c("GFCC Approves", "GFCC Disapproves", "Minister of Education Approves", "Minister of Education Disapproves",
+                               names(m_gip_jan$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Only data from the GIP Wave 27 from January 2017 is used for estimation."
+)
+
+
+```
+
+Pooled analysis:
+
+
+```{r}
+
+load("../Data/gip_merge.Rda")
+
+gip_merge$experiment_groups_jan <- as.character(gip_merge$experiment_groups_jan)
+gip_merge$experiment_groups_nov <- as.character(gip_merge$experiment_groups_nov)
+
+```
+
+
+```{r}
+
+gip_wave<- c(rep("Januar", length(gip_merge$experiment_groups_jan)), rep("November", length(gip_merge$experiment_groups_nov)))
+
+
+```
+
+
+
+```{r}
+
+#create outcome vector
+
+response_vector <- c(gip_merge$sup_factor_nov, gip_merge$sup_factor_jan)
+
+#back to factor
+response_vector <- as.factor(response_vector)
+
+#create experimental group vector
+
+experiment_gr <- c(gip_merge$experiment_groups_nov, gip_merge$experiment_groups_jan)
+  
+#as factor as well  
+experiment_gr <- as.factor(experiment_gr)
+
+#ids for clustered SEs:
+
+ids_gip <- as.factor(c(gip_merge$id_g, gip_merge$id_g))
+
+#create new data set:
+
+gip_analysis <- cbind.data.frame(ids_gip, experiment_gr, response_vector, gip_wave)
+
+#omit NAs for clustered SE estimation
+
+gip_analysis <- na.omit(gip_analysis) #get rid of NAs. These are the respondents who refused to answer or did not answer
+
+
+#recode outcome :
+
+gip_analysis <- gip_analysis %>%
+  mutate(response_vector = recode(response_vector, 
+                             "1" = "disagree",                                
+                             "2" = "indifferent",
+                             "3" = "agree"
+  )
+  ) 
+
+#check order: important for later that the direction of the regression is in line with the order of the factor:
+
+levels(gip_analysis$response_vector) #check
+
+
+#estimate ordered probit:
+
+m_pooled <- polr(response_vector ~ experiment_gr + gip_wave,
+                    data = gip_analysis,
+                    method = "probit",
+                   Hess=TRUE)
+
+summary(m_pooled)
+
+#pvalues
+
+(ctable <- coef(summary(m_pooled)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+#estimate clustered SEs:
+
+library(lmtest)
+library(sandwich)
+
+ses_m_gip_basic <- coeftest(m_pooled, vcov=vcovCL(m_pooled, factor(gip_analysis$ids_gip) ))
+
+```
+
+
+## Knowledge Interaction
+
+-99 is "don't know", thus not coded as missing. Only -90 coded as missing. The knowledge questions are exactly coded as in the DCE paper. 
+
+```{r}
+#recode NAs
+gip_merge$AK26023[gip_merge$AK26023 == -90] <- NA
+gip_merge$AK26024[gip_merge$AK26024 == -90] <- NA
+
+gip_merge$AK26023[gip_merge$AK26023 == -99] <- NA
+gip_merge$AK26024[gip_merge$AK26024 == -99] <- NA
+
+#check
+table(gip_merge$AK26023, useNA = "ifany")
+table(gip_merge$AK26024, useNA = "ifany")
+
+gip_merge$know_voss <- gip_merge$AK26023
+gip_merge$know_baer <- gip_merge$AK26024
+
+```
+
+For know_voss, category 2 is the correct answer. For know_baer, category 3 is the correct answer. 
+
+```{r}
+
+k1 <- ifelse(gip_merge$know_voss == 2, 1, 0)
+k2 <- ifelse(gip_merge$know_baer == 3, 1, 0)
+
+know <- k1 + k2
+
+prop.table(table(k1,k2))
+
+prop.table(table(know, useNA = "ifany"))
+prop.table(table(know))
+
+#recode into dummy
+
+know_dummy <- ifelse(know == 0, 0, 1)
+know_dummy[is.na(know_dummy)] <- 0
+
+table(know_dummy, know)
+prop.table(table(know_dummy, useNA = "ifany"))
+
+```
+
+Around 41 % could at least answer one of the two questions. These are the experts.
+
+
+```{r}
+gip_merge$know_dummy <- know_dummy
+
+merge_knowledge <- data.frame(ids_gip = as.character(gip_merge$id_g), know_dummy = gip_merge$know_dummy)
+
+gip_analysis <- left_join(gip_analysis, merge_knowledge)
+
+#run analysis again, first for supsamples. 
+
+
+m_gip_knowledge <- polr(response_vector ~ experiment_gr*know_dummy, 
+                   data = gip_analysis, 
+                   Hess=TRUE)
+
+summary(m_gip_knowledge)
+
+#pvalues
+
+(ctable <- coef(summary(m_gip_knowledge)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+#stargazer it:
+
+stargazer(m_gip_knowledge, 
+          style = "ajps",
+          type = "latex",
+          title            = "Results of Ordinal Probit Regression for Knowledge Interaction",
+          covariate.labels = c("GFCC Approves", "GFCC Disapproves", "Minister of Education Approves", "Minister of Education Disapproves",
+                               names(m_gip_knowledge$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Standard errors clustered by respondent."
+)
+
+
+
+
+````
+
+
+## Original 5 point scale:
+
+
+```{r}
+
+gip_nov <- read_dta("../Data/GIP_W26_V2.dta")
+
+#subset only the necessary variables for experiment
+
+gip_nov <- gip_nov %>%
+  dplyr::select(id_g, 
+                expAK26001_1, #experimental groups
+                AK26001, #outcome experiment
+                AK26023, # amtierende Präsident nowledge welche der folgenden Personen...
+                AK26024 ) #knowledge welche der folgenden Personen..
+
+
+
+table(gip_nov$expAK26001_1, useNA = "ifany") #why are there NAs in the experimental setup?
+table(gip_nov$AK26001, useNA = "ifany") #-99 and -90 are do not know.
+
+
+#Recode the I don't knows to 
+gip_nov$AK26001[gip_nov$AK26001 < 0] <- NA
+
+
+table(gip_nov$AK26001, useNA = "ifany") #check
+
+
+
+
+gip_nov$expAK26001_1 <- as.factor(gip_nov$expAK26001_1)
+
+gip_nov <- gip_nov %>%
+  mutate(experiment_groups_nov = recode(expAK26001_1, 
+                                    "1" = "Control",                                       
+                                    "2" = "GFCC_Approves",
+                                    "3" = "GFCC_Disapproves",
+                                    "4" = "Kultusminister_Approves",
+                                    "5" = "Kultusminister_Disapproves"
+  )
+  )
+
+###
+gip_jan <- read_dta("../Data/GIP_W27_V1.dta")
+
+
+#subset only the necessary variables for experiment
+
+
+gip_jan <- gip_jan %>%
+  dplyr::select(id_g, expAK27030, #experimental groups
+                AK27030, #response experioment
+                AK27031, #trust_bverfg
+                AK27034, #trust_government
+                AK27035 ) #trust_judiciary
+
+
+
+table(gip_jan$expAK27030, useNA = "ifany") #why are there NAs in the experimental setup?
+table(gip_jan$AK27030, useNA = "ifany") #-99 and -90 are do not know.
+
+table(gip_jan$AK27031, useNA = "ifany") #-99 and -90 are do not know.
+
+
+#Recode the I don't knows to 
+gip_jan$AK27030[gip_jan$AK27030 < 0] <- NA
+
+table(gip_jan$AK27030, useNA = "ifany") #check
+
+#recode NAs in trust gfcc:
+gip_jan$AK27031[gip_jan$AK27031 < 0] <- NA
+
+table(gip_jan$AK27031, useNA = "ifany") #check
+
+#trust government:
+
+gip_jan$AK27034[gip_jan$AK27034 < 0] <- NA
+
+table(gip_jan$AK27034, useNA = "ifany") #check
+
+
+
+#recode experimental groups:
+
+gip_jan$expAK27030 <- as.factor(gip_jan$expAK27030)
+
+gip_jan <- gip_jan %>%
+  mutate(experiment_groups_jan = recode(expAK27030, 
+                                    "1" = "Control",                                       
+                                    "2" = "GFCC_Approves",
+                                    "3" = "GFCC_Disapproves",
+                                    "4" = "DPA_Approves",
+                                    "5" = "DPA_Disapproves"
+  )
+  )
+
+###
+
+gip_merge <-  left_join(gip_jan, gip_nov)
+
+gip_merge$experiment_groups_jan <- as.character(gip_merge$experiment_groups_jan)
+gip_merge$experiment_groups_nov <- as.character(gip_merge$experiment_groups_nov)
+
+#create outcome vector
+
+response_vector <- c(gip_merge$AK26001, gip_merge$AK27030)
+
+#back to factor
+response_vector <- as.factor(response_vector)
+
+#create experimental group vector
+
+experiment_gr <- c(gip_merge$experiment_groups_nov, gip_merge$experiment_groups_jan)
+  
+#as factor as well  
+experiment_gr <- as.factor(experiment_gr)
+
+#ids for clustered SEs:
+
+ids_gip <- as.factor(c(gip_merge$id_g, gip_merge$id_g))
+
+#create new data set:
+
+gip_analysis <- cbind.data.frame(ids_gip, experiment_gr, response_vector)
+
+#omit NAs for clustered SE estimation
+
+gip_analysis <- na.omit(gip_analysis) #get rid of NAs. These are the respondents who refused to answer or did not answer
+
+
+gip_analysis <- gip_analysis %>%
+  mutate(response_vector = recode(response_vector, 
+                                    "1" = "fullydis",                                       
+                                    "2" = "dis",
+                                    "3" = "indifferent",
+                                    "4" = "ag",
+                                    "5" = "fully_ag"
+  )
+  )
+
+
+```
+
+
+Run the model:
+
+```{r}
+
+m_gip_5point <- polr(response_vector ~ experiment_gr, 
+                  method = "probit",
+                   data = gip_analysis, 
+                   Hess=TRUE)
+
+summary(m_gip_5point)
+
+#pvalues
+
+(ctable <- coef(summary(m_gip_5point)))
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = round(p, 4)))
+
+
+library(lmtest)
+library(sandwich)
+
+ses_m_gip_5point <- coeftest(m_gip_5point, vcov=vcovCL(m_gip_5point, factor(gip_analysis$ids_gip) ))
+
+
+#Make Table:
+
+library(stargazer)
+
+stargazer(m_gip_5point, 
+          style = "ajps",
+          type = "latex",
+                    coef = list(summary(m_gip_5point)$coefficients[,1]),
+           se = list(ses_m_gip_5point[,2]),
+          #t = ses_m_gip_basic[,3],
+          p = list(ses_m_gip_5point[, 4]),
+          title            = "Results of Ordinal Probit Regression Using GIP Wave 26, November 2016",
+          covariate.labels = c("Data Security Official Approves", "Data Security Official Disapproves",
+            "GFCC Approves", "GFCC Disapproves", "Minister of Education Approves", "Minister of Education Disapproves",
+                               names(m_gip_5point$zeta)),
+          column.labels = "test",
+          dep.var.caption  = "DV: 3-Scale Rating of Likeability School Security Law",
+          ord.intercepts = T,
+          notes = "All included variables are dummies for the treatement group. The baseline category is the control group (no treatement). Only data from the GIP Wave 26 from November 2016 is used for estimation."
+)
+
+
+```
+
+
+## Robustness trust rating independent of the treatment group. 
+
+```{r}
+merge_trustdf <- data.frame(ids_gip = as.factor(gip_merge$id_g), trust_gfcc = as.numeric(gip_merge$AK27031))
+
+gip_analysis <- left_join(gip_analysis,merge_trustdf)
+
+```
+
+
+```{r}
+
+t.test(gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "Control"], gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Approves"])
+
+t.test(gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "Control"], gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Disapproves"])
+
+t.test(gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Approves"], gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Disapproves"])
+
+```
+
+Both are not significant. Therefore, the respondent's trust rating is not influenced by the experimental manipulation.
+
+## Robustness trust rating independent of the treatment group. 
+
+```{r}
+
+
+t.test(gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "Control"], gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Approves"])
+
+t.test(gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "Control"], gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Disapproves"])
+
+t.test(gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Approves"], gip_analysis$trust_gfcc[gip_analysis$experiment_gr == "GFCC_Disapproves"])
+
+```
+
+Both are not significant. Therefore, the respondent's trust rating is not influenced by the experimental manipulation.
+
+
+
+## Robustness Check Different Policy Issue ENEF, France
+
+Data Prep:
+
+```{r}
+
+df <- read_dta("../Data/ENEF2017_legitimacy_experiment.dta")
+
+#Recode experimental groups:
+
+class(df$ID12)
+class(df$QEXPPOSINS)
+
+
+df$PEXPPOSINS <- as.factor(df$PEXPPOSINS)
+
+#recode the education variable
+
+df <- df %>%
+  mutate(experiment_groups_school = recode(PEXPPOSINS, 
+                                    "1" = "Control",                                       
+                                    "2" = "CC_Approves",
+                                    "3" = "CC_Disapproves",
+                                    "4" = "Haut_Conseil_Edu_Approves",
+                                    "5" = "Haut_Conseil_Edu_Disapproves"
+  )
+  )
+
+
+df$QEXPPOSINS <- as.factor(df$QEXPPOSINS)
+
+#recode the pension variable
+df <- df %>%
+  mutate(experiment_groups_pension = recode(QEXPPOSINS, 
+                                    "1" = "Control",                                       
+                                    "2" = "CC_Approves",
+                                    "3" = "CC_Disapproves",
+                                    "4" = "Conseil_d_Orientation_appr.",
+                                    "5" = "Conseil_d_Orientation_disappr."
+  )
+  )
+
+
+#recode NAs
+df$PCCFAITH[df$PCCFAITH > 6] <- NA
+df$QCCFAITH[df$QCCFAITH > 6] <- NA
+
+table(df$PCCFAITH, useNA = "ifany")
+table(df$QCCFAITH, useNA = "ifany")
+
+
+#short check:
+
+#first reverse to have the German coding:
+
+df$PCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_school  = recode(PCCFAITH, 
+                             "1" = "5",                                  
+                             "2" = "4",
+                             "3" = "3",
+                             "4" = "2",
+                             "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_school <- factor(df$rating_school, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_school, df$PCCFAITH)
+
+
+###do the same for the pension variable
+
+df$QCCFAITH %<>% as.factor() 
+
+df <- df %>%
+  mutate(rating_pension  = recode(QCCFAITH, 
+                             "1" = "5",                                  
+                             "2" = "4",
+                             "3" = "3",
+                             "4" = "2",
+                             "5" = "1"
+  )
+  ) 
+#order levels again
+
+df$rating_pension <- factor(df$rating_pension, levels = c("1", "2", "3", "4", "5"))
+#check:
+table(df$rating_pension, df$QCCFAITH)
+
+
+#################
+#continue recoding: now to 3-point scale
+
+df <- df %>%
+  mutate(rating_school_factor = recode(rating_school, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_school, df$rating_school_factor, useNA = "ifany")
+
+
+#same for pension policy experiment
+
+df <- df %>%
+  mutate(rating_pension_factor = recode(rating_pension, 
+                             "1" = "disagree",                                  
+                             "2" = "disagree",
+                             "3" = "indifferent",
+                             "4" = "agree",
+                             "5" = "agree"
+  )
+  ) 
+
+#check recoding:
+table(df$rating_pension, df$rating_pension_factor, useNA = "ifany")
+
+
+
+
+```
+
